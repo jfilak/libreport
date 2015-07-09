@@ -915,6 +915,8 @@ void free_file_obj(file_obj_t *f);
 GList *parse_delimited_list(char* list, const char *delim);
 #define parse_list libreport_parse_list
 GList *parse_list(const char* list);
+#define join_list libreport_join_list
+char *join_list(GList *list, const char *delimiter);
 
 /* Connect to abrtd over unix domain socket, issue DELETE command */
 int delete_dump_dir_possibly_using_abrtd(const char *dump_dir_name);
