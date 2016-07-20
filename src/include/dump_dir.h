@@ -269,6 +269,10 @@ int dd_get_items_count(struct dump_dir *dd);
  * For more about errno see unlink documentation
  */
 int dd_delete_item(struct dump_dir *dd, const char *name);
+
+/* Creates a new item with given name and returns its fd. On error, -1 is returned. */
+int dd_new_item_fd(struct dump_dir *dd, const char *name);
+
 /* Returns 0 if directory is deleted or not found */
 int dd_delete(struct dump_dir *dd);
 int dd_rename(struct dump_dir *dd, const char *new_path);

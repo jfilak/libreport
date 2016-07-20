@@ -1746,7 +1746,7 @@ static void copy_file_from_chroot(struct dump_dir* dd, const char *name, const c
     }
 }
 
-static bool save_binary_file_at(int dir_fd, const char *name, const char* data, unsigned size, uid_t uid, gid_t gid, mode_t mode)
+static bool open_new_file_at(int dir_fd, const char *name, uid_t uid, gid_t gid, mode_t mode, int *retval)
 {
     assert(name[0] != '/');
 
@@ -1781,6 +1781,16 @@ static bool save_binary_file_at(int dir_fd, const char *name, const char* data, 
         close(fd);
         return false;
     }
+
+    *retval = fd;
+    return true;
+}
+
+static bool save_binary_file_at(int dir_fd, const char *name, const char* data, unsigned size, uid_t uid, gid_t gid, mode_t mode)
+{
+    int fd = -1;
+    if (!open_new_file_at(dir_fd, name, uid, gid, mode, &fd))
+        return false;
 
     unsigned r = full_write(fd, data, size);
     close(fd);
@@ -1962,6 +1972,13 @@ int dd_delete_item(struct dump_dir *dd, const char *name)
     }
 
     return res;
+}
+
+int dd_new_item_fd(struct dump_dir *dd, const char *name)
+{
+    int fd = -1;
+    open_new_file_at(dd->dd_fd, name, dd->dd_uid, dd->dd_gid, dd->mode, &fd);
+    return fd;
 }
 
 static int _dd_get_next_file_dent(struct dump_dir *dd, struct dirent **dent)
