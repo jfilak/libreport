@@ -449,3 +449,11 @@ void xsetregid(gid_t rgid, gid_t egid)
     if (setregid(rgid, egid) != 0)
         perror_msg_and_die("Can't set %cid %lu", 'g', (long)rgid);
 }
+
+FILE *xfdopen(int fd, const char *mode)
+{
+    FILE *const r = fdopen(fd, mode);
+    if (NULL == r)
+        die_out_of_memory();
+    return r;
+}
