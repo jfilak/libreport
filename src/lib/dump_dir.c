@@ -1746,7 +1746,7 @@ static void copy_file_from_chroot(struct dump_dir* dd, const char *name, const c
     }
 }
 
-static bool save_binary_file_at(int dir_fd, const char *name, const char* data, unsigned size, uid_t uid, gid_t gid, mode_t mode)
+static int create_new_file_at(int dir_fd, const char *name, uid_t uid, gid_t gid, mode_t mode)
 {
     assert(name[0] != '/');
 
@@ -1756,20 +1756,17 @@ static bool save_binary_file_at(int dir_fd, const char *name, const char* data, 
     if (fd < 0)
     {
         perror_msg("Can't open file '%s' for writing", name);
-        return false;
+        return -1;
     }
 
-    if (uid != (uid_t)-1L)
+    if ((uid != (uid_t)-1L) && (fchown(fd, uid, gid) == -1))
     {
-        if (fchown(fd, uid, gid) == -1)
-        {
-            perror_msg("Can't change '%s' ownership to %lu:%lu", name, (long)uid, (long)gid);
-            close(fd);
-            return false;
-        }
+        perror_msg("Can't change '%s' ownership to %lu:%lu", name, (long)uid, (long)gid);
+        close(fd);
+        return -1;
     }
 
-    /* O_CREATE in the open() call above causes that the permissions of the
+    /* O_CREAT in the open() call above causes that the permissions of the
      * created file are (mode & ~umask)
      *
      * This is true only if we did create file. We are not sure we created it
@@ -1779,9 +1776,15 @@ static bool save_binary_file_at(int dir_fd, const char *name, const char* data, 
     {
         perror_msg("Can't change mode of '%s'", name);
         close(fd);
-        return false;
+        return -1;
     }
 
+    return fd;
+}
+
+static bool save_binary_file_at(int dir_fd, const char *name, const char* data, unsigned size, uid_t uid, gid_t gid, mode_t mode)
+{
+    int fd = create_new_file_at(dir_fd, name, uid, gid, mode);
     unsigned r = full_write(fd, data, size);
     close(fd);
     if (r != size)
@@ -1962,6 +1965,44 @@ int dd_delete_item(struct dump_dir *dd, const char *name)
     }
 
     return res;
+}
+
+int dd_open_item(struct dump_dir *dd, const char *name, int flag)
+{
+    if (!dd_validate_element_name(name))
+    {
+        error_msg("Cannot open item as FD. '%s' is not a valid file name", name);
+        return -EINVAL;
+    }
+
+    if (flag == O_RDONLY)
+        return openat(dd->dd_fd, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+
+    if (!dd->locked)
+    {
+        error_msg_and_die("dump_dir is not locked"); /* bug */
+        return -1;
+    }
+
+    if (flag == O_WRONLY)
+        return openat(dd->dd_fd, name, O_WRONLY | O_NOFOLLOW | O_CLOEXEC);
+
+    if (flag == O_CREAT)
+        return create_new_file_at(dd->dd_fd, name, dd->dd_uid, dd->dd_gid, dd->mode);
+
+    error_msg("invalid open item flag");
+    return -ENOTSUP;
+}
+
+FILE *dd_open_item_file(struct dump_dir *dd, const char *name, int flag)
+{
+    const int item_fd = dd_open_item(dd, name, flag);
+    if (item_fd < 0)
+        return NULL;
+
+    const char *mode = flag == O_RDONLY ? "r" : "w";
+
+    return fdopen(item_fd, mode);
 }
 
 static int _dd_get_next_file_dent(struct dump_dir *dd, struct dirent **dent)
