@@ -94,3 +94,92 @@ TS_MAIN
 TS_RETURN_MAIN
 ]])
 
+## ----------- ##
+## get_cmdline ##
+## ----------- ##
+
+AT_TESTFUN([get_cmdline], [[
+#include "testsuite.h"
+#include <err.h>
+
+void test(const char *program, const char *args[], const char *expected)
+{
+    int inout[2];
+    xpipe(inout);
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        err(EXIT_FAILURE, "fork");
+    }
+
+    if (pid == 0) {
+        close(STDOUT_FILENO);
+        xdup2(inout[1], STDOUT_FILENO);
+        close(inout[0]);
+
+        execv(program, (char **)args);
+        err(EXIT_FAILURE, "exec(%s)", program);
+    }
+
+    close(inout[1]);
+    int status = 0;
+    if (safe_waitpid(pid, &status, 0) < 0) {
+        err(EXIT_FAILURE, "waitpid");
+    }
+
+    if (WEXITSTATUS(status) != 0) {
+        errx(EXIT_FAILURE, "Child not exited with 0");
+    }
+
+    const size_t buffer_size = strlen(expected) * 2;
+    char cmdline[buffer_size];
+    const ssize_t total = full_read(inout[0], cmdline, buffer_size);
+    close(inout[0]);
+
+    if (total < 0) {
+        err(EXIT_FAILURE, "full_read");
+    }
+
+    cmdline[total] = '\0';
+    TS_ASSERT_STRING_EQ(cmdline, expected, "/proc/[pid]/cmd");
+}
+
+TS_MAIN
+{
+    if (argc > 1) {
+        char *cmdline = NULL;
+        if (strcmp(argv[0], "get_cmdline") == 0) {
+            cmdline = get_cmdline(getpid());
+        }
+        else if (strcmp(argv[0], "get_cmdline_at") == 0) {
+            int pid_proc_fd = open("/proc/self", O_DIRECTORY);
+            if (pid_proc_fd < 0) {
+                err(EXIT_FAILURE, "open(/proc/self, O_DIRECTORY)");
+            }
+            cmdline = get_cmdline_at(pid_proc_fd);
+            close(pid_proc_fd);
+        }
+        else {
+            errx(EXIT_FAILURE, "Unsupported function type '%s'", argv[0]);
+        }
+
+        fprintf(stdout, "%s", cmdline);
+        fflush(stdout);
+        exit(EXIT_SUCCESS);
+    }
+
+    char *binary = malloc_readlink("/proc/self/exe");
+    const char *args[] = { NULL, "!fo\" \"o", "@blah", "b\na'r", "g\rea\t", "regular", NULL };
+
+#define EXPECTED " '!fo\\\" \\\"o' @blah 'b\\na\\'r' 'g\\rea\\t' regular"
+
+    args[0] = "get_cmdline";
+    test(binary, args, "get_cmdline" EXPECTED);
+
+    args[0] = "get_cmdline_at";
+    test(binary, args, "get_cmdline_at" EXPECTED);
+
+    free(binary);
+}
+TS_RETURN_MAIN
+]])
