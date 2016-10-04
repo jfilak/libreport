@@ -353,7 +353,7 @@ int dump_fd_info_ext(const char *dest_filename, const char *proc_pid_fd_path, ui
         goto dumpfd_cleanup;
     }
 
-    dest = xfdopen(dest_fd, "w");
+    dest = xfdopen(dest_fd, "we");
     dump_fd_info_at(pid_proc_fd, dest);
 
 dumpfd_cleanup:
