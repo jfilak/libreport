@@ -409,3 +409,34 @@ TS_MAIN
 }
 TS_RETURN_MAIN
 ]])
+
+## ----------- ##
+## get_rootdir ##
+## ----------- ##
+
+AT_TESTFUN([get_rootdir], [[
+#include "testsuite.h"
+#include <sys/sendfile.h>
+#include <err.h>
+
+TS_MAIN
+{
+    char *proc_self_root = malloc_readlink("/proc/self/root");
+
+    char *root_dir = get_rootdir(getpid());
+    TS_ASSERT_STRING_EQ(root_dir, proc_self_root, "get_rootdir(getpid())");
+    free(root_dir);
+
+
+    int pid_proc_fd = open("/proc/self", O_DIRECTORY | O_PATH);
+    if (pid_proc_fd < 0) {
+        err(EXIT_FAILURE, "open(/proc/self, O_DIRECTORY | O_PATH)");
+    }
+
+    char *root_dir_at = get_rootdir_at(pid_proc_fd);
+    TS_ASSERT_STRING_EQ(root_dir_at, proc_self_root, "get_rootdir_at(open(/proc/self))");
+    close(pid_proc_fd);
+    free(root_dir_at);
+}
+TS_RETURN_MAIN
+]])
