@@ -377,3 +377,35 @@ TS_MAIN
 }
 TS_RETURN_MAIN
 ]])
+
+## ------- ##
+## get_cwd ##
+## ------- ##
+
+AT_TESTFUN([get_cwd], [[
+#include "testsuite.h"
+#include <sys/sendfile.h>
+#include <err.h>
+
+TS_MAIN
+{
+    char wd[PATH_MAX];
+    getcwd(wd, sizeof(wd));
+
+    char *cwd = get_cwd(getpid());
+    TS_ASSERT_STRING_EQ(cwd, wd, "get_cwd(getpid())");
+    free(cwd);
+
+
+    int pid_proc_fd = open("/proc/self", O_DIRECTORY | O_PATH);
+    if (pid_proc_fd < 0) {
+        err(EXIT_FAILURE, "open(/proc/self, O_DIRECTORY | O_PATH)");
+    }
+
+    char *cwd_at = get_cwd_at(pid_proc_fd);
+    TS_ASSERT_STRING_EQ(cwd_at, wd, "get_cwd_at(open(/proc/self))");
+    close(pid_proc_fd);
+    free(cwd_at);
+}
+TS_RETURN_MAIN
+]])
