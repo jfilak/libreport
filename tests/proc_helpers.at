@@ -183,3 +183,197 @@ TS_MAIN
 }
 TS_RETURN_MAIN
 ]])
+
+## -------------- ##
+## get_executable ##
+## -------------- ##
+
+AT_TESTFUN([get_executable], [[
+#include "testsuite.h"
+#include <sys/sendfile.h>
+#include <err.h>
+
+#define PRELINK_BASENAME "/tmp/libreport.testsuite.get_executable"
+#
+void test(const char *program, const char *expected, const char *function, const char *argv1)
+{
+    int inout[2];
+    xpipe(inout);
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        err(EXIT_FAILURE, "fork");
+    }
+
+    if (pid == 0) {
+        close(STDOUT_FILENO);
+        xdup2(inout[1], STDOUT_FILENO);
+        close(inout[0]);
+
+        const char *args[3] = { function, argv1, NULL };
+        execv(program, (char **)args);
+        err(EXIT_FAILURE, "execv(%s) : %d", program, errno);
+    }
+
+    close(inout[1]);
+    int status = 0;
+    if (safe_waitpid(pid, &status, 0) < 0) {
+        err(EXIT_FAILURE, "waitpid");
+    }
+
+    if (WEXITSTATUS(status) != 0) {
+        errx(EXIT_FAILURE, "Child not exited with 0");
+    }
+
+    const size_t buffer_size = strlen(expected) * 2;
+    char executable[buffer_size];
+    const ssize_t total = full_read(inout[0], executable, buffer_size);
+    close(inout[0]);
+
+    if (total < 0) {
+        err(EXIT_FAILURE, "full_read");
+    }
+
+    executable[total] = '\0';
+    TS_ASSERT_STRING_EQ(executable, expected, "/proc/[pid]/exe");
+}
+
+int copy_to_temporary(const char *source, char *dest)
+{
+    int dest_fd = mkstemp(dest);
+    if (dest_fd < 0) {
+        err(EXIT_FAILURE, "mkstemp(%s)", dest);
+    }
+
+    int src_fd = open(source, O_RDONLY);
+    if (src_fd < 0) {
+        err(EXIT_FAILURE, "open(%s, O_RDONLY)", source);
+    }
+
+    struct stat src_stat;
+    if (fstat(src_fd, &src_stat) < 0) {
+        err(EXIT_FAILURE, "fstat(%s)", source);
+    }
+
+    if (sendfile(dest_fd, src_fd, NULL, src_stat.st_size) < 0) {
+        err(EXIT_FAILURE, "splice(%s, %s, %zu)", source, dest, src_stat.st_size);
+    }
+
+    close(src_fd);
+
+    fchmod(dest_fd, src_stat.st_mode);
+    return dest_fd;
+}
+
+TS_MAIN
+{
+    if (argc > 1) {
+        if (strcmp(argv[1], "delete") == 0) {
+            char *binary = malloc_readlink("/proc/self/exe");
+            unlink(binary);
+            if (access(binary, R_OK) != -1 && errno != !ENOENT) {
+                err(EXIT_FAILURE, "failed to remove %s", binary);
+            }
+            free(binary);
+        }
+
+        char *executable = NULL;
+        if (strcmp(argv[0], "get_executable") == 0) {
+            executable = get_executable(getpid());
+        }
+        else if (strcmp(argv[0], "get_executable_at") == 0) {
+            int pid_proc_fd = open("/proc/self", O_DIRECTORY);
+            if (pid_proc_fd < 0) {
+                err(EXIT_FAILURE, "open(/proc/self, O_DIRECTORY)");
+            }
+            executable = get_executable_at(pid_proc_fd);
+            close(pid_proc_fd);
+        }
+        else {
+            errx(EXIT_FAILURE, "Unsupported function type '%s'", argv[0]);
+        }
+
+        fprintf(stdout, "%s", executable);
+        fflush(stdout);
+        exit(EXIT_SUCCESS);
+    }
+
+    {
+        char *binary = malloc_readlink("/proc/self/exe");
+
+        test(binary, binary, "get_executable", "keep");
+        test(binary, binary, "get_executable_at", "keep");
+
+        free(binary);
+    }
+
+    {
+        char binary[] = PRELINK_BASENAME ".#prelink#.XXXXXX";
+        int binary_fd = copy_to_temporary("/proc/self/exe", binary);
+        close(binary_fd);
+
+        test(binary, PRELINK_BASENAME, "get_executable", "keep");
+
+        unlink(binary);
+    }
+
+    {
+        char binary[] = PRELINK_BASENAME ".#prelink#.XXXXXX";
+        int binary_fd = copy_to_temporary("/proc/self/exe", binary);
+        close(binary_fd);
+
+        test(binary, PRELINK_BASENAME, "get_executable_at", "keep");
+
+        unlink(binary);
+    }
+
+    {
+        char binary[] = PRELINK_BASENAME ".#prelink#.XXXXXX";
+        int binary_fd = copy_to_temporary("/proc/self/exe", binary);
+        close(binary_fd);
+
+        test(binary, PRELINK_BASENAME, "get_executable", "delete");
+
+        if (unlink(binary) == 0) {
+            errx(EXIT_FAILURE, "should be already removed %s", binary);
+        }
+    }
+
+    {
+        char binary[] = PRELINK_BASENAME ".#prelink#.XXXXXX";
+        int binary_fd = copy_to_temporary("/proc/self/exe", binary);
+        close(binary_fd);
+
+        test(binary, PRELINK_BASENAME, "get_executable_at", "delete");
+
+        if (unlink(binary) == 0) {
+            errx(EXIT_FAILURE, "should be already removed %s", binary);
+        }
+    }
+
+    {
+        char binary[] = "/tmp/libreport.testsuite.get_executable.XXXXXX";
+        int binary_fd = copy_to_temporary("/proc/self/exe", binary);
+        close(binary_fd);
+
+        test(binary, binary, "get_executable", "delete");
+
+        if (unlink(binary) == 0) {
+            errx(EXIT_FAILURE, "should be already removed %s", binary);
+        }
+    }
+
+    {
+        char binary[] = "/tmp/libreport.testsuite.get_executable.XXXXXX";
+        int binary_fd = copy_to_temporary("/proc/self/exe", binary);
+        close(binary_fd);
+
+        test(binary, binary, "get_executable_at", "delete");
+
+        if (unlink(binary) == 0) {
+            errx(EXIT_FAILURE, "should be already removed %s", binary);
+        }
+    }
+}
+TS_RETURN_MAIN
+]])
