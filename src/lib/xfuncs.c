@@ -454,6 +454,6 @@ FILE *xfdopen(int fd, const char *mode)
 {
     FILE *const r = fdopen(fd, mode);
     if (NULL == r)
-        die_out_of_memory();
+        perror_msg_and_die("Can't open file descriptor %d as FILE", fd);
     return r;
 }
