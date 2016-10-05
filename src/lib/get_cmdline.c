@@ -515,14 +515,14 @@ int get_ns_ids_at(int pid_proc_fd, struct ns_ids *ids)
 
 int dump_namespace_diff_ext(const char *dest_filename, pid_t base_pid, pid_t tested_pid, uid_t uid, gid_t gid)
 {
-    const int dest_fd = open(dest_filename, O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
+    const int dest_fd = open(dest_filename, O_CREAT | O_WRONLY | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
     if (dest_fd < 0)
     {
         pwarn_msg("Failed to create %s", dest_filename);
         return -3;
     }
 
-    FILE *const dest = xfdopen(dest_fd, "w");
+    FILE *const dest = xfdopen(dest_fd, "a");
 
     const int base_pid_proc_fd = open_proc_pid_dir(base_pid);
     const int tested_pid_proc_fd = open_proc_pid_dir(tested_pid);
