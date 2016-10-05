@@ -679,3 +679,23 @@ TS_MAIN
 }
 TS_RETURN_MAIN
 ]])
+
+
+## ------------- ##
+## get_fs-u_g-id ##
+## ------------- ##
+
+AT_TESTFUN([get_fs-u_g-id], [[
+#include "testsuite.h"
+#include <sys/sendfile.h>
+#include <err.h>
+
+TS_MAIN
+{
+    char *proc_pid_status = xmalloc_xopen_read_close("/proc/self/status", NULL);
+    TS_ASSERT_SIGNED_EQ(get_fsuid(proc_pid_status), getuid());
+    TS_ASSERT_SIGNED_EQ(get_fsgid(proc_pid_status), getgid());
+    free(proc_pid_status);
+}
+TS_RETURN_MAIN
+]])
