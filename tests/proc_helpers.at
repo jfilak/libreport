@@ -440,3 +440,242 @@ TS_MAIN
 }
 TS_RETURN_MAIN
 ]])
+
+## ------------ ##
+## dump_fd_info ##
+## ------------ ##
+
+AT_TESTFUN([dump_fd_info], [[
+#include "testsuite.h"
+#include <sys/sendfile.h>
+#include <err.h>
+
+#define FILENAME_FORMAT "/tmp/libreport.testsuite.fdinfo.%d.%s"
+
+pid_t prepare_process(void)
+{
+    int toparent[2];
+    xpipe(toparent);
+
+    char *binary = malloc_readlink("/proc/self/exe");
+    pid_t pid = fork();
+    if (pid < 0) {
+        err(EXIT_FAILURE, "fork");
+    }
+
+    if (pid == 0) {
+        close(STDOUT_FILENO);
+        xdup2(toparent[1], STDOUT_FILENO);
+
+        DIR *fddir = opendir("/proc/self/fd");
+        struct dirent *dent;
+        while ((dent = readdir(fddir))) {
+            const int fd = atoi(dent->d_name);
+            if (fd != STDOUT_FILENO) {
+                close(fd);
+            }
+        }
+
+        execl(binary, "wait", NULL);
+        exit(EXIT_FAILURE);
+    }
+
+    close(toparent[1]);
+
+    free(binary);
+
+    /* Wait for child */
+    char buf[8];
+    if (full_read(toparent[0], buf, 8) < 0) {
+        fprintf(stderr, "Failed to read from child: %s\n", strerror(errno));
+        fflush(stderr);
+    }
+
+    close(toparent[0]);
+
+    return pid;
+}
+
+void kill_process(pid_t pid)
+{
+    /* Notify child */
+    kill(pid, SIGTERM);
+    int status = 0;
+    if (safe_waitpid(pid, &status, 0) < 0) {
+        fprintf(stderr, "Couldn't wait for child\n");
+    }
+    else if (!WIFSIGNALED(status) || WTERMSIG(status) != SIGTERM) {
+        fprintf(stderr, "Child was not TERMinated - %d\n", status);
+    }
+}
+
+void check_file_contents(const char *fdinfo_filename)
+{
+    struct fd {
+        int fd;
+        const char *file;
+    } fds[] = {
+        { .fd = 0, .file = "/etc/services", },
+        { .fd = 2, .file = "/etc/passwd", },
+        { .fd = 3, .file = "/etc/group", },
+    };
+
+    char *file = xmalloc_xopen_read_close(fdinfo_filename, NULL);
+    int fdno = 0;
+    char *cursor = file;
+    char *line = file;
+    char *end = file + strlen(file);
+    while (cursor < end) {
+        cursor = strchrnul(line, '\n');
+        if (*cursor != '\0') {
+            *cursor = '\0';
+        }
+        ++cursor;
+
+        if (fdno < (sizeof(fds)/sizeof(fds[0]))) {
+            int fd = 0;
+            char *file = NULL;
+            const int res = sscanf(line, "%d:%ms", &fd, &file);
+            TS_ASSERT_SIGNED_EQ(res, 2);
+            TS_ASSERT_SIGNED_EQ(fd, fds[fdno].fd);
+            TS_ASSERT_STRING_EQ(file, fds[fdno].file, "FD file name");
+            free(file);
+        }
+
+        line = cursor;
+        int fieldscnt = 0;
+        while (line < end) {
+            cursor = strchrnul(line, '\n');
+            if (*cursor != '\0') {
+                *cursor = '\0';
+            }
+            ++cursor;
+
+            if (strcmp(line, "") == 0) {
+                break;
+            }
+
+            int col = 0;
+            for (; col < strlen(line); ++col) {
+                if (line[col] == ':') {
+                    break;
+                }
+
+                TS_ASSERT_TRUE(line[col] != ' ' && line[col] != '\t');
+                if (!g_testsuite_last_ok) {
+                    break;
+                }
+            }
+            TS_ASSERT_SIGNED_NEQ(col, 0);
+            TS_ASSERT_SIGNED_LT(col, strlen(line));
+            if (g_testsuite_last_ok) {
+                TS_ASSERT_CHAR_EQ(line[col], ':');
+            }
+
+            fieldscnt += g_testsuite_last_ok;
+            line = cursor;
+        }
+        TS_ASSERT_SIGNED_GT(fieldscnt, 2);
+
+        ++fdno;
+        line = cursor;
+    }
+
+    TS_ASSERT_SIGNED_EQ(fdno, sizeof(fds)/sizeof(fds[0]));
+    free(file);
+}
+
+TS_MAIN
+{
+    if (strcmp(argv[0], "wait") == 0) {
+        FILE *services = fopen("/etc/services", "r");
+        FILE *passwd = fopen("/etc/passwd", "r");
+        FILE *group = fopen("/etc/group", "r");
+
+        /* Notify parent */
+        close(STDOUT_FILENO);
+
+        /* Wait for parent */
+        while (1) {
+            sleep(1);
+        }
+
+        fclose(group);
+        fclose(passwd);
+        fclose(services);
+        exit(EXIT_SUCCESS);
+    }
+
+    pid_t pid = prepare_process();
+
+    char proc_dir_path[strlen("/proc/%d/fd") + sizeof(pid_t) * 3];
+    if (sizeof(proc_dir_path) <= snprintf(proc_dir_path, sizeof(proc_dir_path), "/proc/%d/fd", pid)) {
+        errx(EXIT_FAILURE, "too small buffer for proc dir path");
+    }
+
+    {
+        TS_PRINTF("%s\n", "dump_fd_info");
+        char fdinfo_filename[strlen(FILENAME_FORMAT) + sizeof(pid_t) * 3 + strlen("dump_fd_info")];
+        if (sizeof(fdinfo_filename) <= snprintf(fdinfo_filename, sizeof(fdinfo_filename), FILENAME_FORMAT, pid, "dump_fd_info")) {
+            errx(EXIT_FAILURE, "too small buffer for file name");
+        }
+
+        TS_ASSERT_FUNCTION(dump_fd_info(fdinfo_filename, proc_dir_path));
+
+        struct stat st;
+        TS_ASSERT_FUNCTION(stat(fdinfo_filename, &st));
+        if (g_testsuite_last_ok) {
+            TS_ASSERT_SIGNED_EQ(st.st_mode & 0777, 0600);
+        }
+
+        check_file_contents(fdinfo_filename);
+
+        unlink(fdinfo_filename);
+    }
+
+    {
+        TS_PRINTF("%s\n", "dump_fd_info_ext");
+        char fdinfo_filename[strlen(FILENAME_FORMAT) + sizeof(pid_t) * 3 + strlen("dump_fd_info_ext")];
+        if (sizeof(fdinfo_filename) <= snprintf(fdinfo_filename, sizeof(fdinfo_filename), FILENAME_FORMAT, pid, "dump_fd_info_ext")) {
+            errx(EXIT_FAILURE, "too small buffer for file name");
+        }
+
+        const uid_t uid = getuid();
+        const gid_t gid = getgid();
+        TS_ASSERT_FUNCTION(dump_fd_info_ext(fdinfo_filename, proc_dir_path, uid, gid));
+
+        struct stat st;
+        TS_ASSERT_FUNCTION(stat(fdinfo_filename, &st));
+        if (g_testsuite_last_ok) {
+            TS_ASSERT_SIGNED_EQ(st.st_mode & 0777, 0600);
+        }
+
+        check_file_contents(fdinfo_filename);
+
+        unlink(fdinfo_filename);
+    }
+
+    {
+        TS_PRINTF("%s\n", "dump_fd_info_at");
+        char fdinfo_filename[strlen(FILENAME_FORMAT) + sizeof(pid_t) * 3 + strlen("dump_fd_info_at")];
+        if (sizeof(fdinfo_filename) <= snprintf(fdinfo_filename, sizeof(fdinfo_filename), FILENAME_FORMAT, pid, "dump_fd_info_at")) {
+            errx(EXIT_FAILURE, "too small buffer for file name");
+        }
+
+        FILE *dest = fopen(fdinfo_filename, "w");
+        const int pid_proc_fd = open_proc_pid_dir(pid);
+
+        TS_ASSERT_FUNCTION(dump_fd_info_at(pid_proc_fd, dest));
+
+        close(pid_proc_fd);
+        fclose(dest);
+
+        check_file_contents(fdinfo_filename);
+
+        unlink(fdinfo_filename);
+    }
+
+    kill_process(pid);
+}
+TS_RETURN_MAIN
+]])
