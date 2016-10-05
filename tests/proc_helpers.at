@@ -699,3 +699,71 @@ TS_MAIN
 }
 TS_RETURN_MAIN
 ]])
+
+
+## ---------- ##
+## get_ns_ids ##
+## ---------- ##
+
+AT_TESTFUN([get_ns_ids], [[
+#include "testsuite.h"
+#include <sys/sendfile.h>
+#include <err.h>
+
+void check(struct ns_ids *ids)
+{
+    const int nsfd = open("/proc/self/ns", O_DIRECTORY);
+    assert(nsfd >= 0);
+
+    for (size_t i = 0; i < ARRAY_SIZE(libreport_proc_namespaces); ++i) {
+        struct stat st;
+        if (fstatat(nsfd, libreport_proc_namespaces[i], &st, 0) < 0) {
+            TS_ASSERT_SIGNED_OP_MESSAGE(ids->nsi_ids[i], ==, PROC_NS_UNSUPPORTED, libreport_proc_namespaces[i]);
+        }
+        else {
+            TS_ASSERT_SIGNED_OP_MESSAGE(ids->nsi_ids[i], ==, st.st_ino, libreport_proc_namespaces[i]);
+        }
+    }
+
+    DIR *nsdir = fdopendir(nsfd);
+    assert(nsdir != NULL);
+
+    struct dirent *dent = NULL;
+    while ((dent = readdir(nsdir))) {
+        if (dot_or_dotdot(dent->d_name))
+            continue;
+
+        size_t i = 0;
+        for (; i < ARRAY_SIZE(libreport_proc_namespaces); ++i) {
+            if (strcmp(libreport_proc_namespaces[i], dent->d_name) == 0) {
+                break;
+            }
+        }
+        TS_ASSERT_SIGNED_OP_MESSAGE(i, <, ARRAY_SIZE(libreport_proc_namespaces), dent->d_name);
+
+        if (g_testsuite_last_ok) {
+            struct stat st;
+            TS_ASSERT_FUNCTION(fstatat(nsfd, dent->d_name, &st, 0));
+            TS_ASSERT_SIGNED_OP_MESSAGE(ids->nsi_ids[i], ==, st.st_ino, dent->d_name);
+        }
+    }
+
+    closedir(nsdir);
+}
+
+TS_MAIN
+{
+    TS_PRINTF("%s\n", "get_ns_ids");
+    struct ns_ids pid_ids;
+    TS_ASSERT_FUNCTION(get_ns_ids(getpid(), &pid_ids));
+    check(&pid_ids);
+
+    TS_PRINTF("%s\n", "get_ns_ids_at");
+    const int pid_proc_dir = open_proc_pid_dir(getpid());
+    struct ns_ids proc_ids;
+    TS_ASSERT_FUNCTION(get_ns_ids_at(pid_proc_dir, &proc_ids));
+    check(&proc_ids);
+    close(pid_proc_dir);
+}
+TS_RETURN_MAIN
+]])
