@@ -311,9 +311,9 @@ int dump_fd_info_at(int pid_proc_fd, FILE *dest)
             eol[1] = '\0';
             fputs(line, dest);
         }
+        fclose(fdinfo);
 
 dumpfd_next_fd:
-        fclose(fdinfo);
         free(fdname);
     }
 
@@ -346,15 +346,15 @@ int dump_fd_info_ext(const char *dest_filename, const char *proc_pid_fd_path, ui
         goto dumpfd_cleanup;
     }
 
-    dest_fd = open(dest_filename, O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    dest_fd = open(dest_filename, O_CREAT | O_WRONLY | O_EXCL | O_CLOEXEC, 0600);
     if (dest_fd < 0)
     {
         r = -errno;
         goto dumpfd_cleanup;
     }
 
-    dest = xfdopen(dest_fd, "we");
-    dump_fd_info_at(pid_proc_fd, dest);
+    dest = xfdopen(dest_fd, "w");
+    r = dump_fd_info_at(pid_proc_fd, dest);
 
 dumpfd_cleanup:
     errno = 0;
