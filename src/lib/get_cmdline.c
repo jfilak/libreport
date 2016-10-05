@@ -471,61 +471,45 @@ int get_env_variable(pid_t pid, const char *name, char **value)
     return r;
 }
 
-static int _get_ns_ids_at(int pid_proc_fd, struct ns_ids *ids)
-{
-    int r = 0;
-    DIR *ns_dir_fd = fdopendir(pid_proc_fd);
-    if (ns_dir_fd == NULL)
-    {
-        r = -errno;
-        close(pid_proc_fd);
-        pwarn_msg("Failed to open /proc/[pid] directory");
-        return r;
-    }
-
-    for (size_t i = 0; i < ARRAY_SIZE(libreport_proc_namespaces); ++i)
-    {
-        struct stat stbuf;
-        if (fstatat(dirfd(ns_dir_fd), libreport_proc_namespaces[i], &stbuf, /* flags */0) != 0)
-        {
-            if (errno != ENOENT)
-            {
-                r = (i + 1);
-                goto get_ns_ids_cleanup;
-            }
-
-            ids->nsi_ids[i] = PROC_NS_UNSUPPORTED;
-            continue;
-        }
-
-        ids->nsi_ids[i] = stbuf.st_ino;
-    }
-
-get_ns_ids_cleanup:
-    closedir(ns_dir_fd);
-
-    return r;
-}
-
 int get_ns_ids(pid_t pid, struct ns_ids *ids)
 {
     const int proc_pid_fd = open_proc_pid_dir(pid);
-    const int r = _get_ns_ids_at(proc_pid_fd, ids);
+    const int r = get_ns_ids_at(proc_pid_fd, ids);
+    close(proc_pid_fd);
     return r;
 }
 
 int get_ns_ids_at(int pid_proc_fd, struct ns_ids *ids)
 {
-    int r = 0;
-    const int dup_pid_proc_fd = dup(pid_proc_fd);
-    if (dup_pid_proc_fd < 0)
+    const int nsfd = openat(pid_proc_fd, "ns", O_DIRECTORY | O_PATH);
+    if (nsfd < 0)
     {
-        r = -errno;
-        pwarn_msg("Failed to duplicate /proc/[pid] directory FD");
-        return r;
+        pwarn_msg("Failed to open /proc/[pid]/ns directory");
+        return -errno;
     }
 
-    r = _get_ns_ids_at(dup_pid_proc_fd, ids);
+    int r = 0;
+    for (size_t i = 0; i < ARRAY_SIZE(libreport_proc_namespaces); ++i)
+    {
+        const char *const ns_name = libreport_proc_namespaces[i];
+        struct stat stbuf;
+        if (fstatat(nsfd, ns_name, &stbuf, /* flags */0) < 0)
+        {
+            if (errno != ENOENT)
+            {
+                r = i + 1;
+                break;
+            }
+
+            ids->nsi_ids[i] = PROC_NS_UNSUPPORTED;
+        }
+        else
+        {
+            ids->nsi_ids[i] = stbuf.st_ino;
+        }
+    }
+
+    close(nsfd);
     return r;
 }
 
