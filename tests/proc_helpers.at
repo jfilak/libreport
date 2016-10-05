@@ -863,3 +863,31 @@ TS_MAIN
 }
 TS_RETURN_MAIN
 ]])
+
+
+## -------------------- ##
+## get_pid_of_container ##
+## -------------------- ##
+
+AT_TESTFUN([get_pid_of_container], [[
+#include "testsuite.h"
+#include <err.h>
+
+TS_MAIN
+{
+    {
+        pid_t cpid = 0;
+        TS_ASSERT_FUNCTION(get_pid_of_container(getpid(), &cpid));
+        TS_ASSERT_SIGNED_EQ(cpid, 1);
+    }
+
+    {
+        pid_t cpid = 0;
+        const int pid_proc_fd = open_proc_pid_dir(getpid());
+        TS_ASSERT_FUNCTION(get_pid_of_container_at(pid_proc_fd, &cpid));
+        TS_ASSERT_SIGNED_EQ(cpid, 1);
+        TS_ASSERT_FUNCTION(close(pid_proc_fd));
+    }
+}
+TS_RETURN_MAIN
+]])
