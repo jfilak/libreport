@@ -31,43 +31,8 @@ from report import EXIT_CANCEL_BY_USER as RETURN_CANCEL_BY_USER
 # event canceled processing
 from report import EXIT_STOP_EVENT_RUN as RETURN_STOP_EVENT_RUN
 
-
-GETTEXT_PROGNAME = "libreport"
-import os
-import locale
-import gettext
-
-_ = lambda x: gettext.dgettext(GETTEXT_PROGNAME, x)
-
-def init_gettext():
-    try:
-        locale.setlocale(locale.LC_ALL, "")
-    except locale.Error:
-        os.environ['LC_ALL'] = 'C'
-        locale.setlocale(locale.LC_ALL, "")
-    # Defeat "AttributeError: 'module' object has no attribute 'nl_langinfo'"
-    try:
-        gettext.bind_textdomain_codeset(GETTEXT_PROGNAME, locale.nl_langinfo(locale.CODESET))
-    except AttributeError:
-        pass
-    gettext.bindtextdomain(GETTEXT_PROGNAME, '/usr/share/locale')
-
-init_gettext()
-
-verbose = 0
-ABRT_VERBOSE = os.getenv("ABRT_VERBOSE")
-if ABRT_VERBOSE:
-    try:
-        verbose = int(ABRT_VERBOSE)
-    except:
-        pass
-
-
-def set_verbosity(verbosity):
-    global verbose
-    verbose = verbosity
-    os.environ["ABRT_VERBOSE"] = str(verbose)
-
+# internal functions
+from report import verbose, set_verbosity, _
 
 def log(fmt, *args):
     sys.stderr.write("%s\n" % (fmt % args))

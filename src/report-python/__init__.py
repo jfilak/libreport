@@ -32,6 +32,10 @@ except ImportError:
 
 import os
 
+GETTEXT_PROGNAME = "libreport"
+import locale
+import gettext
+
 SYSTEM_RELEASE_PATHS = ["/etc/system-release","/etc/redhat-release"]
 SYSTEM_RELEASE_DEPS = ["system-release", "redhat-release"]
 SYSTEM_OS_RELEASE_FILE = "/etc/os-release"
@@ -40,6 +44,37 @@ OS_RELEASE_VERSION_FIELDS = ["REDHAT_BUGZILLA_PRODUCT_VERSION", "REDHAT_SUPPORT_
 
 _hardcoded_default_product = ""
 _hardcoded_default_version = ""
+
+_ = lambda x: gettext.dgettext(GETTEXT_PROGNAME, x)
+
+def init_gettext():
+    try:
+        locale.setlocale(locale.LC_ALL, "")
+    except locale.Error:
+        os.environ['LC_ALL'] = 'C'
+        locale.setlocale(locale.LC_ALL, "")
+    # Defeat "AttributeError: 'module' object has no attribute 'nl_langinfo'"
+    try:
+        gettext.bind_textdomain_codeset(GETTEXT_PROGNAME, locale.nl_langinfo(locale.CODESET))
+    except AttributeError:
+        pass
+    gettext.bindtextdomain(GETTEXT_PROGNAME, '/usr/share/locale')
+
+init_gettext()
+
+verbose = 0
+ABRT_VERBOSE = os.getenv("ABRT_VERBOSE")
+if ABRT_VERBOSE:
+    try:
+        verbose = int(ABRT_VERBOSE)
+    except:
+        pass
+
+def set_verbosity(verbosity):
+    global verbose
+    verbose = verbosity
+    os.environ["ABRT_VERBOSE"] = str(verbose)
+
 
 """
 def getProduct_fromRPM():
