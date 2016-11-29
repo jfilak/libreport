@@ -16,9 +16,6 @@ sys.path.insert(0, "../../../src/client-python/reportclient/.libs")
 sys.path.insert(0, "../../../src/report-python")
 sys.path.insert(0, "../../../src/report-python/.libs")
 
-report = __import__("report-python", globals(), locals(), [], -1)
-sys.modules["report"] = report
-
 
 class TestReportClientVerbose(unittest.TestCase):
     def setUp(self):
@@ -27,11 +24,16 @@ class TestReportClientVerbose(unittest.TestCase):
         except:
             pass
         os.unsetenv("ABRT_VERBOSE")
+
+        self.report = __import__("report-python", globals(), locals(), [], -1)
+        sys.modules["report"] = self.report
+
         self.reportclient = __import__("reportclient", globals(), locals(), [], -1)
         sys.modules["reportclient"] = self.reportclient
 
     def tearDown(self):
         del sys.modules["reportclient"]
+        del sys.modules["report"]
 
     def test_default(self):
         self.assertEquals(self.reportclient.verbose, 0)
@@ -43,11 +45,13 @@ class TestReportClientVerbose(unittest.TestCase):
 
     def test_load_from_environ(self):
         os.environ["ABRT_VERBOSE"] = "2"
+        reload(self.report)
         reload(self.reportclient)
         self.assertEquals(self.reportclient.verbose, 2)
 
     def test_recover_from_invalid_environ(self):
         os.environ["ABRT_VERBOSE"] = "foo"
+        reload(self.report)
         reload(self.reportclient)
         self.assertEquals(self.reportclient.verbose, 0)
 

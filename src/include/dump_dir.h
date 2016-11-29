@@ -178,7 +178,16 @@ struct dump_dir *dd_create(const char *dir, uid_t uid, mode_t mode);
  * os_relase), creates an element with the prefix "root_"
  */
 void dd_create_basic_files(struct dump_dir *dd, uid_t uid, const char *chroot_dir);
-int dd_exist(const struct dump_dir *dd, const char *path);
+
+/* Checks if the given name refers to a valid dump directory element.
+ *
+ * @param dd The dump directory.
+ * @param name The tested name.
+ * @return 1 if the name refers to a regular file or a directory; in all other
+ * cases 0 is returned.
+ */
+int dd_exist(const struct dump_dir *dd, const char *name);
+
 void dd_sanitize_mode_and_owner(struct dump_dir *dd);
 
 /* Initializes an iterator going through all dump directory items.

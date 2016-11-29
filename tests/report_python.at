@@ -143,3 +143,51 @@ if os.getgid() != gid:
 
 sys.exit(exit_code)
 ]])
+
+## --------- ##
+## verbosity ##
+## --------- ##
+
+AT_PYTESTFUN([verbosity], [[
+import sys
+import os
+import unittest
+
+sys.path.insert(0, "../../../src/report-python")
+sys.path.insert(0, "../../../src/report-python/.libs")
+
+class TestReportVerbose(unittest.TestCase):
+    def setUp(self):
+        try:
+            del os.environ["ABRT_VERBOSE"]
+        except:
+            pass
+        os.unsetenv("ABRT_VERBOSE")
+        self.report = __import__("report", globals(), locals(), [], -1)
+        sys.modules["report"] = self.report
+
+    def tearDown(self):
+        del sys.modules["report"]
+
+    def test_default(self):
+        self.assertEquals(self.report.verbose, 0)
+
+    def test_assign(self):
+        self.report.set_verbosity(1)
+        self.assertEquals(self.report.verbose, 1)
+        self.assertEquals(os.environ["ABRT_VERBOSE"], "1")
+
+    def test_load_from_environ(self):
+        os.environ["ABRT_VERBOSE"] = "2"
+        reload(self.report)
+        self.assertEquals(self.report.verbose, 2)
+
+    def test_recover_from_invalid_environ(self):
+        os.environ["ABRT_VERBOSE"] = "foo"
+        reload(self.report)
+        self.assertEquals(self.report.verbose, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
+]])
