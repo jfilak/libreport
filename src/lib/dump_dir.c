@@ -1369,8 +1369,17 @@ void dd_create_basic_files(struct dump_dir *dd, uid_t uid, const char *chroot_di
         free(release);
     }
 
-    if (chroot_dir)
-        copy_file_from_chroot(dd, FILENAME_OS_INFO_IN_ROOTDIR, chroot_dir, "/etc/os-release");
+    char *chroot = NULL;
+    if (chroot_dir == NULL)
+    {
+        chroot = dd_load_text_ext(dd, FILENAME_ROOTDIR,
+                        DD_LOAD_TEXT_RETURN_NULL_ON_FAILURE | DD_FAIL_QUIETLY_ENOENT);
+    }
+    else
+        chroot = xstrdup(chroot_dir);
+
+    if (chroot)
+        copy_file_from_chroot(dd, FILENAME_OS_INFO_IN_ROOTDIR, chroot, "/etc/os-release");
 
     /* if release exists in dumpdir don't create it, but don't warn
      * if it doesn't
@@ -1395,10 +1404,11 @@ void dd_create_basic_files(struct dump_dir *dd, uid_t uid, const char *chroot_di
             *newline = '\0';
 
         dd_save_text(dd, FILENAME_OS_RELEASE, release);
-        if (chroot_dir)
-            copy_file_from_chroot(dd, FILENAME_OS_RELEASE_IN_ROOTDIR, chroot_dir, "/etc/system-release");
+        if (chroot)
+            copy_file_from_chroot(dd, FILENAME_OS_RELEASE_IN_ROOTDIR, chroot, "/etc/system-release");
     }
     free(release);
+    free(chroot);
 }
 
 void dd_sanitize_mode_and_owner(struct dump_dir *dd)

@@ -1993,3 +1993,86 @@ TS_MAIN
 }
 TS_RETURN_MAIN
 ]])
+
+## --------------------- ##
+## dd_create_with_chroot ##
+## --------------------- ##
+
+AT_TESTFUN([dd_create_with_chroot], [[
+#include "testsuite.h"
+#include "testsuite_tools.h"
+
+TS_MAIN
+{
+    char chroot_etc_name[] = "/tmp/XXXXXX/etc";
+
+    char *chroot_dir_end = strrchr(chroot_etc_name, '/');
+    *chroot_dir_end = '\0';
+
+    if (mkdtemp(chroot_etc_name) == NULL) {
+        perror("mkdtemp()");
+        abort();
+    }
+
+    *chroot_dir_end = '/';
+    assert(mkdir(chroot_etc_name, 0700) == 0);
+
+    const int chroot_etc_fd = open(chroot_etc_name, O_DIRECTORY);
+    assert(chroot_etc_fd >= 0);
+
+    {
+        const int os_release_fd = openat(chroot_etc_fd, "os-release", O_WRONLY | O_CREAT, 0640);
+        assert(os_release_fd >= 0);
+        full_write_str(os_release_fd, "ABRT=fabulous");
+        close(os_release_fd);
+    }
+    {
+        const int system_release_fd = openat(chroot_etc_fd, "system-release", O_WRONLY | O_CREAT, 0640);
+        assert(system_release_fd >= 0);
+        full_write_str(system_release_fd, "Brilliant LIBREPORT");
+        close(system_release_fd);
+    }
+
+    close(chroot_etc_fd);
+
+    *chroot_dir_end = '\0';
+
+    struct dump_dir *dd_as_argument = testsuite_dump_dir_create(-1, 0640, 0);
+    dd_create_basic_files(dd_as_argument, (uid_t)-1, chroot_etc_name);
+
+    struct dump_dir *dd_in_element = testsuite_dump_dir_create(-1, 0640, 0);
+    dd_save_text(dd_in_element, FILENAME_ROOTDIR, chroot_etc_name);
+    dd_create_basic_files(dd_in_element, (uid_t)-1, NULL);
+
+#define CHECK(dd) \
+    { \
+        char *dd##osrelease = dd_load_text(dd, FILENAME_OS_INFO_IN_ROOTDIR); \
+        TS_ASSERT_STRING_EQ(dd##osrelease, "ABRT=fabulous", "os-release from chroot"); \
+        free(dd##osrelease); \
+    } \
+    { \
+        char *dd##systemrelease = dd_load_text(dd, FILENAME_OS_RELEASE_IN_ROOTDIR); \
+        TS_ASSERT_STRING_EQ(dd##systemrelease, "Brilliant LIBREPORT", "system-release from chroot"); \
+        free(dd##systemrelease); \
+    } \
+    { \
+        char *dd##chroot = dd_load_text(dd, FILENAME_ROOTDIR); \
+        TS_ASSERT_STRING_EQ(dd##chroot, chroot_etc_name, "The chroot"); \
+        free(dd##chroot); \
+    }
+
+    CHECK(dd_as_argument);
+    CHECK(dd_in_element);
+
+    testsuite_dump_dir_delete(dd_in_element);
+    testsuite_dump_dir_delete(dd_as_argument);
+
+#define RM_CMD_FMT "rm %s"
+    size_t len = strlen(RM_CMD_FMT) + strlen(chroot_etc_name) + 1;
+    char *rm_cmd = xmalloc(len);
+    snprintf(rm_cmd, len, RM_CMD_FMT, (const char *)chroot_etc_name);
+    system(rm_cmd);
+    free(rm_cmd);
+}
+TS_RETURN_MAIN
+]])
