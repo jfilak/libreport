@@ -1376,7 +1376,10 @@ void dd_create_basic_files(struct dump_dir *dd, uid_t uid, const char *chroot_di
                         DD_LOAD_TEXT_RETURN_NULL_ON_FAILURE | DD_FAIL_QUIETLY_ENOENT);
     }
     else
+    {
         chroot = xstrdup(chroot_dir);
+        dd_save_text(dd, FILENAME_ROOTDIR, chroot);
+    }
 
     if (chroot)
         copy_file_from_chroot(dd, FILENAME_OS_INFO_IN_ROOTDIR, chroot, "/etc/os-release");
